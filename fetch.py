@@ -20,7 +20,6 @@ usb = [
 
 usb_url = 'https://api.usb.urbanobservatory.ac.uk/api/v2/sensors/timeseries/'
 
-
 city = [
     'PER_EMOTE_101_SOIL/data/json/?last_n_days=3&data_variable=Soil%20Moisture',
     'PER_EMOTE_102_SOIL/data/json/?last_n_days=3&data_variable=Soil%20Moisture',
@@ -32,7 +31,28 @@ city = [
 city_url = 'http://uoweb3.ncl.ac.uk/api/v1.1/sensors/'
 
 
-def fetch():
+def send_data(data, field, name, units):
+    last_entry = readings.find_one(
+        {field: {'$exists': True}}, {'time': 1},
+        sort=[('_id', DESCENDING)]
+    )
+
+    if last_entry is not None:
+        last_time = last_entry['time']
+        data = data[data.time > last_time]
+
+    if len(data) > 0:
+        sensors.update_one({'name': name}, {
+            '$set': {
+                field + '.units': units,
+                field + '.last_updated': data.time.iloc[-1],
+                field + '.last_value': data[field].iloc[-1]
+            }},
+                           upsert=True)
+        db.readings.insert_many(data.to_dict('records'))
+
+
+def fetch_usb():
 
     for sensor in usb:
         json = requests.get(usb_url + sensor).json()
@@ -50,26 +70,29 @@ def fetch():
         data['time'] = pd.to_datetime(data.time).dt.tz_localize(None)
         data = data.sort_values('time')
 
-        last_entry = readings.find_one(
-            {'name': entity}, {'time': 1},
-            sort=[('_id', DESCENDING)]
-        )
-        if last_entry is not None:
-            last_time = last_entry['time']
-            data = data[data.time > last_time]
+        send_data(data=data, field=field, name=entity, units=units)
 
-        if len(data) > 0:
-            sensors.update_one({'name': entity}, {
-                '$set': {
-                    field + '.units': units,
-                    field + '.last_updated': data.time.iloc[-1],
-                    field + '.last_value': data[field].iloc[-1]
-                }},
-                               upsert=True)
-            db.readings.insert_many(data.to_dict('records'))
+
+def fetch_city():
+    for sensor in city:
+        json = requests.get(city_url + sensor).json()
+        values = json['sensors'][0]['data'].get('Soil Moisture')
+        if values is None or len(values) == 0:
+            continue
+
+        name = 'Urban Sciences Building Green Roof'
+        field = json['sensors'][0]['Sensor Name']['0']
+        units = values[0]['Units']
+
+        data = pd.DataFrame({'name': name, 'time': record['Timestamp'], field: record['Value']} for record in values)
+        data['time'] = pd.to_datetime(data.time, unit='ms')
+        data = data.sort_values('time')
+
+        send_data(data=data, field=field, name=name, units=units)
 
 
 if __name__ == '__main__':
     while True:
-        fetch()
+        fetch_usb()
+        fetch_city()
         time.sleep(15 * 60)
