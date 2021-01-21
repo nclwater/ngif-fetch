@@ -42,6 +42,7 @@ def send_data(data, field, name, units):
         data = data[data.time > last_time]
 
     if len(data) > 0:
+        print(f'{pd.Timestamp.now().round("s")} Sending {len(data)} records from {field} ({name})')
         sensors.update_one({'name': name}, {
             '$set': {
                 field + '.units': units,
