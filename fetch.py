@@ -33,7 +33,7 @@ city_url = 'http://uoweb3.ncl.ac.uk/api/v1.1/sensors/'
 
 def send_data(data, field, name, units):
     last_entry = readings.find_one(
-        {field: {'$exists': True}}, {'time': 1},
+        {'name': name, field: {'$exists': True}}, {'time': 1},
         sort=[('_id', DESCENDING)]
     )
 
@@ -92,8 +92,66 @@ def fetch_city():
         send_data(data=data, field=field, name=name, units=units)
 
 
+def fetch_envirowatch():
+    from xml.etree import ElementTree as ET
+    url = "http://api-nclc.envirowatch.ltd.uk/moteservice.asmx"
+    headers = {'content-type': 'text/xml'}
+    email = os.getenv('ENVIROWATCH_EMAIL')
+    password = os.getenv('ENVIROWATCH_PASSWORD')
+    assert email is not None, 'Envirowatch email address missing'
+    assert password is not None, 'Envirowatch password missing'
+    body = f"""<?xml version="1.0" encoding="utf-8"?>
+    <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+      <soap:Body>
+        <Login xmlns="http://envirowatch.ltd.uk/">
+          <emailAddress>{email}</emailAddress>
+          <password>{password}</password>
+        </Login>
+      </soap:Body>
+    </soap:Envelope>"""
+
+    response = requests.post(url, data=body, headers=headers)
+    root = ET.fromstring(response.text)
+    token = root.find('.//{http://envirowatch.ltd.uk/}token').text
+
+    body = f"""<?xml version="1.0" encoding="utf-8"?>
+    <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+      <soap:Body>
+        <GetLatest xmlns="http://envirowatch.ltd.uk/">
+          <token>{token}</token>
+        </GetLatest>
+      </soap:Body>
+    </soap:Envelope>"""
+    response = requests.post(url, data=body, headers=headers)
+
+    root = ET.fromstring(response.text)
+    for sensor in [7001, 7002, 7003, 7004, 7005]:
+        name = 'Swale'
+        field = f'Soil moisture ({sensor})'
+        data = pd.DataFrame(
+            {
+                'name': name,
+                'time': pd.to_datetime(elem.find('{http://envirowatch.ltd.uk/}TimeStamp').text),
+                field: int(elem.find('{http://envirowatch.ltd.uk/}Reserved').text) / 10,
+
+            } for elem in root.findall(f".//*[{{http://envirowatch.ltd.uk/}}SensorId='{sensor}']"))
+
+        send_data(data, field, name, units='% VWC')
+
+
 if __name__ == '__main__':
+    interval = 30
     while True:
+        start = pd.Timestamp.now()
+
         fetch_usb()
         fetch_city()
-        time.sleep(15 * 60)
+        fetch_envirowatch()
+
+        end = pd.Timestamp.now()
+        duration = (end - start).total_seconds()
+
+        if duration < interval:
+            wait = interval - duration
+            print(f'{pd.Timestamp.now().round("s")} Waiting for {wait} seconds')
+            time.sleep(wait)
