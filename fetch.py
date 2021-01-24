@@ -136,6 +136,8 @@ def fetch_envirowatch():
 
             } for elem in root.findall(f".//*[{{http://envirowatch.ltd.uk/}}SensorId='{sensor}']"))
 
+        data = data.sort_values('time')
+
         send_data(data, field, name, units='% VWC')
 
 
@@ -153,5 +155,5 @@ if __name__ == '__main__':
 
         if duration < interval:
             wait = interval - duration
-            print(f'{pd.Timestamp.now().round("s")} Waiting for {wait} seconds')
+            print(f'{pd.Timestamp.now().round("s")} Waiting for {int(round(wait))} second(s)')
             time.sleep(wait)
