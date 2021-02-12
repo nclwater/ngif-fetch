@@ -3,6 +3,7 @@ from pymongo import MongoClient, DESCENDING
 import os
 import pandas as pd
 import time
+from json import JSONDecodeError
 
 mongo_uri = os.getenv('MONGO_URI', 'mongodb://test:password@localhost:27017/test?authSource=admin')
 
@@ -56,7 +57,10 @@ def send_data(data, field, name, units):
 def fetch_usb():
 
     for sensor in usb:
-        json = requests.get(usb_url + sensor).json()
+        try:
+            json = requests.get(usb_url + sensor).json()
+        except JSONDecodeError:
+            continue
 
         values = json['historic']['values']
 
@@ -76,7 +80,10 @@ def fetch_usb():
 
 def fetch_city():
     for sensor in city:
-        json = requests.get(city_url + sensor).json()
+        try:
+            json = requests.get(city_url + sensor).json()
+        except JSONDecodeError:
+            continue
         values = json['sensors'][0]['data'].get('Soil Moisture')
         if values is None or len(values) == 0:
             continue
