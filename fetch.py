@@ -143,6 +143,9 @@ def fetch_envirowatch():
 
             } for elem in root.findall(f".//*[{{http://envirowatch.ltd.uk/}}SensorId='{sensor}']"))
 
+        if len(data) == 0:
+            continue
+
         data = data.sort_values('time')
 
         send_data(data, field, name, units='% VWC')
