@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import time
 from json import JSONDecodeError
+from requests.exceptions import ConnectionError
 
 mongo_uri = os.getenv('MONGO_URI', 'mongodb://test:password@localhost:27017/test?authSource=admin')
 
