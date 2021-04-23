@@ -32,6 +32,10 @@ city = [
 city_url = 'http://uoweb3.ncl.ac.uk/api/v1.1/sensors/'
 
 
+def log(s):
+    print(f'{pd.Timestamp.now().round("s")} {s}')
+
+
 def send_data(data, field, name, units):
     last_entry = readings.find_one(
         {'name': name, field: {'$exists': True}}, {'time': 1},
@@ -43,7 +47,7 @@ def send_data(data, field, name, units):
         data = data[data.time > last_time]
 
     if len(data) > 0:
-        print(f'{pd.Timestamp.now().round("s")} Sending {len(data)} records from {field} ({name})')
+        log(f'Sending {len(data)} records from {field} ({name})')
         sensors.update_one({'name': name}, {
             '$set': {
                 field + '.units': units,
@@ -156,8 +160,15 @@ if __name__ == '__main__':
     while True:
         start = pd.Timestamp.now()
 
-        fetch_usb()
-        fetch_city()
+        try:
+            fetch_usb()
+        except ConnectionError:
+            log('Could not fetch USB data')
+        try:
+            fetch_city()
+        except ConnectionError:
+            log('Could not fetch city data')
+
         fetch_envirowatch()
 
         end = pd.Timestamp.now()
@@ -165,5 +176,5 @@ if __name__ == '__main__':
 
         if duration < interval:
             wait = interval - duration
-            print(f'{pd.Timestamp.now().round("s")} Waiting for {int(round(wait))} second(s)')
+            log(f'Waiting for {int(round(wait))} second(s)')
             time.sleep(wait)
