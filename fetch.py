@@ -183,7 +183,7 @@ def fetch_acomb():
         field = field.split(' ')[0]
         data = pd.DataFrame([{
             'name': sensor_name,
-            'time': pd.to_datetime(description[-1]),
+            'time': pd.to_datetime(description[-1], dayfirst=True),
             field: value}])
 
         send_data(data, field, sensor_name, units)
