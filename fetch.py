@@ -5,6 +5,7 @@ import pandas as pd
 import time
 from json import JSONDecodeError
 from requests.exceptions import ConnectionError
+import re
 
 mongo_uri = os.getenv('MONGO_URI', 'mongodb://test:password@localhost:27017/test?authSource=admin')
 
@@ -156,6 +157,38 @@ def fetch_envirowatch():
         send_data(data, field, name, units='% VWC')
 
 
+def fetch_acomb():
+    response = requests.get("http://acomb.envirowatch.ltd.uk/handlers/latestupdate.ashx")
+    placemarks = re.findall("<Placemark>(.*?)</Placemark>", response.text)
+    for placemark in placemarks:
+        sensor_name = re.findall("<name>(.*?)</name>", placemark)[0]
+        description = re.findall("<p>(.*?)</p>", placemark)
+        values = {}
+        for text in description[:-1]:
+            field, value = text.split(': ')
+            values[field] = value
+
+        if sensor_name.startswith('400'):
+            field = 'Hydro (m)'
+            value = float(values[field])
+            units = 'm'
+        elif sensor_name.startswith('70'):
+            field = 'Reserved (Reserved)'
+            value = int(values[field]) / 10
+            units = '%'
+        else:
+            log(f'Acomb sensor {sensor_name} not recognised')
+            continue
+
+        field = field.split(' ')[0]
+        data = pd.DataFrame([{
+            'name': sensor_name,
+            'time': pd.to_datetime(description[-1]),
+            field: value}])
+
+        send_data(data, field, sensor_name, units)
+
+
 if __name__ == '__main__':
     interval = 30
     while True:
@@ -171,6 +204,8 @@ if __name__ == '__main__':
             log('Could not fetch city data')
 
         fetch_envirowatch()
+
+        fetch_acomb()
 
         end = pd.Timestamp.now()
         duration = (end - start).total_seconds()
